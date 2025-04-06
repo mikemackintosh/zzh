@@ -1,16 +1,15 @@
 #!/bin/bash
 
-LAST_TAG=$(git describe --tags --abbrev=0)
-IFS='.' read -r -a VERSION_PARTS <<< "$LAST_TAG"
-MAJOR=${VERSION_PARTS[0]}
-MINOR=${VERSION_PARTS[1]}
-PATCH=${VERSION_PARTS[2]}
-
-# Increment the patch version
-PATCH=$((PATCH + 1))
-
-# Construct the new version
-NEXT_VERSION="${MAJOR}.${MINOR}.${PATCH}"
+TODAY=$(date +%Y%m%d)
+EXISTING_TAGS=$(git tag -l "${TODAY}V*")
+if [[ -z "$EXISTING_TAGS" ]]; then
+    NEXT_VERSION="${TODAY}V001"
+else
+    LAST_TAG=$(echo "$EXISTING_TAGS" | sort | tail -n 1)
+    LAST_INCREMENT=$(echo "$LAST_TAG" | sed -E "s/${TODAY}V([0-9]{3})/\1/")
+    NEXT_INCREMENT=$(printf "%03d" $((10#$LAST_INCREMENT + 1)))
+    NEXT_VERSION="${TODAY}V${NEXT_INCREMENT}"
+fi
 
 # Set the new version
 git tag "$NEXT_VERSION"
@@ -45,7 +44,7 @@ elif [[ "$OSTYPE" == "msys" ]]; then
 fi
 
 
-go build -o ./bin/cli \
+go build -o ./bin/zzh \
     -ldflags "-X main.version=${VERSION} -X main.commit=${COMMIT} -X main.date=${DATE}" \
     -trimpath \
     -v \
