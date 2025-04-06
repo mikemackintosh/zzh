@@ -45,7 +45,7 @@ fi
 
 
 go build -o ./bin/zzh \
-    -ldflags "-X main.version=${VERSION} -X main.commit=${COMMIT} -X main.date=${DATE}" \
+    -ldflags "-w -X main.version=${VERSION} -X main.commit=${COMMIT} -X main.date=${DATE}" \
     -trimpath \
     -v \
     ./cmd/zzh/{main,terminal}.go
