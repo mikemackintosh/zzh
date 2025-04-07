@@ -19,6 +19,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/kevinburke/ssh_config"
+	"golang.org/x/term"
 )
 
 var (
@@ -171,6 +172,38 @@ func listMargins() (top, right, bottom, left int) {
 	return 1, 2, 1, 2
 }
 
+// renderStatusBar creates a status bar for SSH sessions
+func renderStatusBar(host *SSHHost, connectTime time.Time, width int) string {
+	// Create styles for the status bar
+	barStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#FFFFFF")).
+		Background(lipgloss.Color("39")).
+		Bold(true).
+		Width(width).
+		Padding(0, 1)
+
+	// Format the connection information
+	hostname := fmt.Sprintf("%s@%s", host.user, host.hostname)
+	timeConnected := fmt.Sprintf("Connected: %s", connectTime.Format("15:04:05"))
+	
+	// Calculate spacing to place timeConnected on the right
+	hostLen := len(hostname) + 2  // +2 for the padding
+	spacing := width - hostLen - len(timeConnected)
+	
+	if spacing < 1 {
+		spacing = 1
+	}
+	
+	// Create the status bar content
+	content := fmt.Sprintf("%s%s%s", 
+		hostname, 
+		strings.Repeat(" ", spacing),
+		timeConnected,
+	)
+	
+	return barStyle.Render(content)
+}
+
 // Load SSH hosts from config file
 func loadSSHHosts() ([]list.Item, error) {
 	usr, err := user.Current()
@@ -243,8 +276,9 @@ func loadSSHHosts() ([]list.Item, error) {
 
 // Connect to SSH host using the native SSH client
 func connectToSSHNative(host SSHHost, inZzhPanel bool) error {
-	// Create a timestamp for the log file
-	timestamp := time.Now().Format("20060102-150405")
+	// Create a timestamp for the session
+	connectTime := time.Now()
+	timestamp := connectTime.Format("20060102-150405")
 
 	// Set default log file path if not running in zzh mode
 	logFileName := fmt.Sprintf("ssh_session_%s_%s.log", host.name, timestamp)
@@ -260,7 +294,7 @@ func connectToSSHNative(host SSHHost, inZzhPanel bool) error {
 
 	// Log session start
 	fmt.Fprintf(logFile, "=== SSH Session to %s started at %s ===\n\n",
-		host.name, time.Now().Format(time.RFC3339))
+		host.name, connectTime.Format(time.RFC3339))
 
 	// Build the ssh command with arguments
 	sshArgs := []string{}
@@ -288,6 +322,19 @@ func connectToSSHNative(host SSHHost, inZzhPanel bool) error {
 	// Set environment variables to ensure color support
 	cmd.Env = append(os.Environ(), "TERM=xterm-256color")
 
+	// Get terminal size
+	fd := int(os.Stdout.Fd())
+	width, height, err := term.GetSize(fd)
+	if err != nil {
+		width, height = 80, 24 // Default fallback
+	}
+	
+	// Clear screen and render status bar before entering raw mode
+	fmt.Printf("\033[2J\033[H%s\n", renderStatusBar(&host, connectTime, width))
+	
+	// Adjust LINES environment variable to account for the status bar
+	cmd.Env = append(cmd.Env, fmt.Sprintf("LINES=%d", height-1))
+	
 	// Set up I/O
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = io.MultiWriter(os.Stdout, logFile)
@@ -334,8 +381,9 @@ func connectToSSHNative(host SSHHost, inZzhPanel bool) error {
 
 // Connect to SSH host via zzh panel command
 func connectToSSHViaZzh(host SSHHost) error {
-	// Create a timestamp for the log file
-	timestamp := time.Now().Format("20060102-150405")
+	// Create a timestamp for the session
+	connectTime := time.Now()
+	timestamp := connectTime.Format("20060102-150405")
 	logFileName := fmt.Sprintf("ssh_session_%s_%s.log", host.name, timestamp)
 	if *zzhLogFile != "" {
 		logFileName = *zzhLogFile
@@ -349,7 +397,7 @@ func connectToSSHViaZzh(host SSHHost) error {
 
 	// Log session start
 	fmt.Fprintf(logFile, "=== SSH Session to %s via zzh panel started at %s ===\n\n",
-		host.name, time.Now().Format(time.RFC3339))
+		host.name, connectTime.Format(time.RFC3339))
 
 	// Build the zzh command with arguments to connect to the host
 	zzhArgs := []string{"connect"}
@@ -367,6 +415,19 @@ func connectToSSHViaZzh(host SSHHost) error {
 
 	// Set environment variables
 	cmd.Env = append(os.Environ(), "TERM=xterm-256color")
+
+	// Get terminal size
+	fd := int(os.Stdout.Fd())
+	width, height, err := term.GetSize(fd)
+	if err != nil {
+		width, height = 80, 24 // Default fallback
+	}
+	
+	// Clear screen and render status bar before entering raw mode
+	fmt.Printf("\033[2J\033[H%s\n", renderStatusBar(&host, connectTime, width))
+	
+	// Adjust LINES environment variable to account for the status bar
+	cmd.Env = append(cmd.Env, fmt.Sprintf("LINES=%d", height-1))
 
 	// Set up I/O
 	cmd.Stdin = os.Stdin
